@@ -1,0 +1,25 @@
+# Node modules and build artifacts
+node_modules/
+dist/
+cache/
+artifacts/
+typechain/
+typechain-types/
+coverage/
+coverage.json
+.env
+
+# Hardhat-specific
+deployments/
+*.tsbuildinfo
+
+# IDE/editor
+.vscode/
+.idea/
+.DS_Store
+
+# OS
+Thumbs.db
+
+# Environment
+.env
