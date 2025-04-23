@@ -1,6 +1,6 @@
 # ⚡ Stobix Core Contracts
 
-Stobix is a next-gen crypto trading platform built for privacy, performance, and user control. We bring together high-leverage futures (up to 100x), yield-optimized investment tools, and smart decision-making features — all in one seamless, wallet-first interface. No fluff, no friction — just clean, fast, confident trading powered by Web3.
+[Stobix](https://stobix.com/?utm_source=github) is a next-gen crypto trading platform built for privacy, performance, and user control. We bring together high-leverage futures (up to 100x), yield-optimized investment tools, and smart decision-making features — all in one seamless, wallet-first interface. No fluff, no friction — just clean, fast, confident trading powered by Web3.
 
 The system is designed with decentralization, self-custody, and validator-based governance at its core. There are no centralized owners, upgradeability patterns, or privileged access — every critical action is enforced by consensus.
 
