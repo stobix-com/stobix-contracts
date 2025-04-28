@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
 import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
+import './interfaces/IProofRelay.sol';
 
 /**
  * @title ProofRelay
@@ -19,7 +20,7 @@ import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
  *
  * The contract does not rely on upgradability patterns, third-party governance, or off-chain logic.
  */
-contract ProofRelay is ReentrancyGuard {
+contract ProofRelay is ReentrancyGuard, IProofRelay {
   using ECDSA for bytes32;
 
   // ============================
