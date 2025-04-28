@@ -22,11 +22,7 @@ describe('Treasury', () => {
 
     await treasury.waitForDeployment()
 
-    token = await MockERC20.deploy(
-      'Mock',
-      'MOCK',
-      ethers.parseUnits('1000', 18)
-    )
+    token = await MockERC20.deploy('Mock', 'MOCK', ethers.parseUnits('1000', 18))
 
     await token.waitForDeployment()
   })
@@ -40,15 +36,135 @@ describe('Treasury', () => {
 
       await expect(tx)
         .to.emit(treasury, 'Deposit')
-        .withArgs(
-          ethers.ZeroAddress,
-          await v1.getAddress(),
-          ethers.parseEther('1')
-        )
+        .withArgs(ethers.ZeroAddress, await v1.getAddress(), ethers.parseEther('1'))
 
       const balance = await ethers.provider.getBalance(treasury.target)
 
       expect(balance).to.equal(ethers.parseEther('1'))
+    })
+  })
+
+  describe('constructor()', () => {
+    it('should revert if any validator is zero address', async () => {
+      const Treasury = await ethers.getContractFactory('Treasury')
+
+      await expect(
+        Treasury.deploy([ethers.ZeroAddress, await v1.getAddress(), await v2.getAddress()])
+      ).to.be.revertedWith('Treasury: invalid validator')
+    })
+  })
+
+  describe('pause()', () => {
+    it('should pause the contract', async () => {
+      const deadline = Math.floor(Date.now() / 1000) + 3600
+      const nonce = await treasury.nonce()
+
+      const hash = await treasury.getPauseHash(deadline, nonce)
+      const signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await treasury.connect(v1).pause(deadline, nonce, signature)
+
+      expect(await treasury.paused()).to.equal(true)
+    })
+
+    it('should revert if already paused', async () => {
+      const deadline = Math.floor(Date.now() / 1000) + 3600
+      const nonce = await treasury.nonce()
+
+      const hash = await treasury.getPauseHash(deadline, nonce)
+      const signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await treasury.connect(v1).pause(deadline, nonce, signature)
+
+      await expect(treasury.connect(v1).pause(deadline, nonce + 1n, signature)).to.be.revertedWith(
+        'Treasury: already paused'
+      )
+    })
+
+    it('should revert if deadline expired', async () => {
+      const deadline = Math.floor(Date.now() / 1000) - 10
+      const nonce = await treasury.nonce()
+
+      const hash = await treasury.getPauseHash(deadline, nonce)
+      const signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await expect(treasury.connect(v1).pause(deadline, nonce, signature)).to.be.revertedWith(
+        'Treasury: deadline expired'
+      )
+    })
+
+    it('should revert on invalid nonce', async () => {
+      const deadline = Math.floor(Date.now() / 1000) + 3600
+      const nonce = await treasury.nonce()
+
+      const hash = await treasury.getPauseHash(deadline, nonce)
+      const signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await expect(treasury.connect(v1).pause(deadline, nonce + 1n, signature)).to.be.revertedWith(
+        'Treasury: invalid nonce'
+      )
+    })
+  })
+
+  describe('unpause()', () => {
+    beforeEach(async () => {
+      const deadline = Math.floor(Date.now() / 1000) + 3600
+      const nonce = await treasury.nonce()
+
+      const hash = await treasury.getPauseHash(deadline, nonce)
+      const signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await treasury.connect(v1).pause(deadline, nonce, signature)
+    })
+
+    it('should unpause the contract', async () => {
+      const deadline = Math.floor(Date.now() / 1000) + 3600
+      const nonce = await treasury.nonce()
+
+      const hash = await treasury.getUnpauseHash(deadline, nonce)
+      const signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await treasury.connect(v1).unpause(deadline, nonce, signature)
+
+      expect(await treasury.paused()).to.equal(false)
+    })
+
+    it('should revert if not paused', async () => {
+      const deadline = Math.floor(Date.now() / 1000) + 3600
+      const nonce = await treasury.nonce()
+
+      const hash = await treasury.getUnpauseHash(deadline, nonce)
+      const signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await treasury.connect(v1).unpause(deadline, nonce, signature)
+
+      await expect(
+        treasury.connect(v1).unpause(deadline, nonce + 1n, signature)
+      ).to.be.revertedWith('Treasury: not paused')
+    })
+
+    it('should revert if deadline expired', async () => {
+      const deadline = Math.floor(Date.now() / 1000) - 10
+      const nonce = await treasury.nonce()
+
+      const hash = await treasury.getUnpauseHash(deadline, nonce)
+      const signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await expect(treasury.connect(v1).unpause(deadline, nonce, signature)).to.be.revertedWith(
+        'Treasury: deadline expired'
+      )
+    })
+
+    it('should revert on invalid nonce', async () => {
+      const deadline = Math.floor(Date.now() / 1000) + 3600
+      const nonce = await treasury.nonce()
+
+      const hash = await treasury.getUnpauseHash(deadline, nonce)
+      const signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await expect(
+        treasury.connect(v1).unpause(deadline, nonce + 1n, signature)
+      ).to.be.revertedWith('Treasury: invalid nonce')
     })
   })
 
@@ -69,26 +185,42 @@ describe('Treasury', () => {
     })
 
     it('should revert with zero amount', async () => {
-      await expect(
-        treasury.deposit(await token.getAddress(), 0)
-      ).to.be.revertedWith('Treasury: invalid amount')
+      await expect(treasury.deposit(await token.getAddress(), 0)).to.be.revertedWith(
+        'Treasury: invalid amount'
+      )
     })
 
     it('should revert if user has insufficient balance', async () => {
       const amount = ethers.parseUnits('1000000', 18)
       await token.approve(treasury, amount)
 
-      await expect(
-        treasury.deposit(await token.getAddress(), amount)
-      ).to.be.revertedWith('ERC20: transfer amount exceeds balance')
+      await expect(treasury.deposit(await token.getAddress(), amount)).to.be.revertedWith(
+        'ERC20: transfer amount exceeds balance'
+      )
     })
 
     it('should revert if user has not approved tokens', async () => {
       const amount = ethers.parseUnits('10', 18)
 
-      await expect(
-        treasury.deposit(await token.getAddress(), amount)
-      ).to.be.revertedWith('ERC20: insufficient allowance')
+      await expect(treasury.deposit(await token.getAddress(), amount)).to.be.revertedWith(
+        'ERC20: insufficient allowance'
+      )
+    })
+
+    it('should revert if paused', async () => {
+      const deadline = Math.floor(Date.now() / 1000) + 3600
+      const nonce = await treasury.nonce()
+
+      const hash = await treasury.getPauseHash(deadline, nonce)
+      const signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await treasury.connect(v1).pause(deadline, nonce, signature)
+
+      const amount = ethers.parseUnits('10', 18)
+
+      await expect(treasury.deposit(await token.getAddress(), amount)).to.be.revertedWith(
+        'Treasury: paused'
+      )
     })
   })
 
@@ -126,10 +258,7 @@ describe('Treasury', () => {
     })
 
     it('should withdraw tokens', async () => {
-      await token.transfer(
-        await treasury.getAddress(),
-        ethers.parseUnits('100', 18)
-      )
+      await token.transfer(await treasury.getAddress(), ethers.parseUnits('100', 18))
 
       const whitelistDeadline = Math.floor(Date.now() / 1000) + 3600
       const whitelistNonce = await treasury.nonce()
@@ -139,9 +268,7 @@ describe('Treasury', () => {
         whitelistDeadline,
         whitelistNonce
       )
-      const whitelistSignature = await v2.signMessage(
-        ethers.getBytes(whitelistHash)
-      )
+      const whitelistSignature = await v2.signMessage(ethers.getBytes(whitelistHash))
 
       await treasury
         .connect(v1)
@@ -165,9 +292,7 @@ describe('Treasury', () => {
         withdrawDeadline,
         withdrawNonce
       )
-      const withdrawSignature = await v2.signMessage(
-        ethers.getBytes(withdrawHash)
-      )
+      const withdrawSignature = await v2.signMessage(ethers.getBytes(withdrawHash))
 
       const balance = await token.balanceOf(to)
 
@@ -199,19 +324,11 @@ describe('Treasury', () => {
       const deadline = Math.floor(Date.now() / 1000) - 10
       const nonce = await treasury.nonce()
 
-      const hash = await treasury.getWithdrawHash(
-        ethers.ZeroAddress,
-        to,
-        amount,
-        deadline,
-        nonce
-      )
+      const hash = await treasury.getWithdrawHash(ethers.ZeroAddress, to, amount, deadline, nonce)
       const signature = await v2.signMessage(ethers.getBytes(hash))
 
       await expect(
-        treasury
-          .connect(v1)
-          .withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
+        treasury.connect(v1).withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
       ).to.be.revertedWith('Treasury: deadline expired')
     })
 
@@ -221,19 +338,11 @@ describe('Treasury', () => {
       const deadline = Math.floor(Date.now() / 1000) + 3600
       const nonce = await treasury.nonce()
 
-      const hash = await treasury.getWithdrawHash(
-        ethers.ZeroAddress,
-        to,
-        amount,
-        deadline,
-        nonce
-      )
+      const hash = await treasury.getWithdrawHash(ethers.ZeroAddress, to, amount, deadline, nonce)
       const signature = await v2.signMessage(ethers.getBytes(hash))
 
       await expect(
-        treasury
-          .connect(v1)
-          .withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
+        treasury.connect(v1).withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
       ).to.be.revertedWith('Treasury: zero amount')
     })
 
@@ -254,14 +363,7 @@ describe('Treasury', () => {
       await expect(
         treasury
           .connect(v1)
-          .withdraw(
-            ethers.ZeroAddress,
-            ethers.ZeroAddress,
-            amount,
-            deadline,
-            nonce,
-            signature
-          )
+          .withdraw(ethers.ZeroAddress, ethers.ZeroAddress, amount, deadline, nonce, signature)
       ).to.be.revertedWith('Treasury: zero recipient')
     })
 
@@ -283,14 +385,7 @@ describe('Treasury', () => {
       await expect(
         treasury
           .connect(v1)
-          .withdraw(
-            await token.getAddress(),
-            to,
-            amount,
-            deadline,
-            nonce,
-            signature
-          )
+          .withdraw(await token.getAddress(), to, amount, deadline, nonce, signature)
       ).to.be.revertedWith('Treasury: token not whitelisted')
     })
 
@@ -300,19 +395,11 @@ describe('Treasury', () => {
       const deadline = Math.floor(Date.now() / 1000) + 3600
       const nonce = await treasury.nonce()
 
-      const hash = await treasury.getWithdrawHash(
-        ethers.ZeroAddress,
-        to,
-        amount,
-        deadline,
-        nonce
-      )
+      const hash = await treasury.getWithdrawHash(ethers.ZeroAddress, to, amount, deadline, nonce)
       const signature = await v2.signMessage(ethers.getBytes(hash))
 
       await expect(
-        treasury
-          .connect(v1)
-          .withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
+        treasury.connect(v1).withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
       ).to.be.revertedWith('Treasury: call execution failed')
     })
 
@@ -322,13 +409,7 @@ describe('Treasury', () => {
       const deadline = Math.floor(Date.now() / 1000) + 3600
       const nonce = await treasury.nonce()
 
-      const hash = await treasury.getWithdrawHash(
-        ethers.ZeroAddress,
-        to,
-        amount,
-        deadline,
-        nonce
-      )
+      const hash = await treasury.getWithdrawHash(ethers.ZeroAddress, to, amount, deadline, nonce)
       const signature = await v2.signMessage(ethers.getBytes(hash))
 
       await treasury
@@ -336,9 +417,7 @@ describe('Treasury', () => {
         .withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
 
       await expect(
-        treasury
-          .connect(v1)
-          .withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
+        treasury.connect(v1).withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
       ).to.be.revertedWith('Treasury: invalid nonce')
     })
 
@@ -351,9 +430,7 @@ describe('Treasury', () => {
       const signature = '0xdeadbeef' + '0'.repeat(130 - 10)
 
       await expect(
-        treasury
-          .connect(v1)
-          .withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
+        treasury.connect(v1).withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
       ).to.be.revertedWith('ECDSA: invalid signature length')
     })
 
@@ -363,19 +440,11 @@ describe('Treasury', () => {
       const deadline = Math.floor(Date.now() / 1000) + 3600
       const nonce = await treasury.nonce()
 
-      const hash = await treasury.getWithdrawHash(
-        ethers.ZeroAddress,
-        to,
-        amount,
-        deadline,
-        nonce
-      )
+      const hash = await treasury.getWithdrawHash(ethers.ZeroAddress, to, amount, deadline, nonce)
       const signature = await user.signMessage(ethers.getBytes(hash))
 
       await expect(
-        treasury
-          .connect(v1)
-          .withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
+        treasury.connect(v1).withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
       ).to.be.revertedWith('Treasury: invalid signer')
     })
 
@@ -396,14 +465,7 @@ describe('Treasury', () => {
       await expect(
         treasury
           .connect(v1)
-          .withdraw(
-            ethers.ZeroAddress,
-            await v1.getAddress(),
-            amount,
-            deadline,
-            nonce,
-            signature
-          )
+          .withdraw(ethers.ZeroAddress, await v1.getAddress(), amount, deadline, nonce, signature)
       ).to.be.revertedWith('Treasury: same signer')
     })
 
@@ -413,20 +475,35 @@ describe('Treasury', () => {
       const deadline = Math.floor(Date.now() / 1000) + 3600
       const nonce = await treasury.nonce()
 
-      const hash = await treasury.getWithdrawHash(
-        ethers.ZeroAddress,
-        to,
-        amount,
-        deadline,
-        nonce
-      )
+      const hash = await treasury.getWithdrawHash(ethers.ZeroAddress, to, amount, deadline, nonce)
       const signature = await v2.signMessage(ethers.getBytes(hash))
 
       await expect(
-        treasury
-          .connect(user)
-          .withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
+        treasury.connect(user).withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
       ).to.be.revertedWith('Treasury: sender not validator')
+    })
+
+    it('should revert if paused', async () => {
+      let deadline = Math.floor(Date.now() / 1000) + 3600
+      let nonce = await treasury.nonce()
+
+      let hash = await treasury.getPauseHash(deadline, nonce)
+      let signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await treasury.connect(v1).pause(deadline, nonce, signature)
+
+      const to = await user.getAddress()
+      const amount = ethers.parseEther('1')
+
+      deadline = Math.floor(Date.now() / 1000) + 3600
+      nonce = await treasury.nonce()
+
+      hash = await treasury.getWithdrawHash(ethers.ZeroAddress, to, amount, deadline, nonce)
+      signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await expect(
+        treasury.connect(v1).withdraw(ethers.ZeroAddress, to, amount, deadline, nonce, signature)
+      ).to.be.revertedWith('Treasury: paused')
     })
   })
 
@@ -439,13 +516,9 @@ describe('Treasury', () => {
       const hash = await treasury.getWhitelistHash(address, deadline, nonce)
       const signature = await v2.signMessage(ethers.getBytes(hash))
 
-      const tx = await treasury
-        .connect(v1)
-        .whitelistToken(address, deadline, nonce, signature)
+      const tx = await treasury.connect(v1).whitelistToken(address, deadline, nonce, signature)
 
-      await expect(tx)
-        .to.emit(treasury, 'TokenWhitelisted')
-        .withArgs(address, hash)
+      await expect(tx).to.emit(treasury, 'TokenWhitelisted').withArgs(address, hash)
 
       expect(await treasury.isWhitelistedToken(address)).to.equal(true)
     })
@@ -484,9 +557,7 @@ describe('Treasury', () => {
       const hash = await treasury.getWhitelistHash(address, deadline, nonce)
       const signature = await v2.signMessage(ethers.getBytes(hash))
 
-      await treasury
-        .connect(v1)
-        .whitelistToken(address, deadline, nonce, signature)
+      await treasury.connect(v1).whitelistToken(address, deadline, nonce, signature)
 
       await expect(
         treasury.connect(v1).whitelistToken(address, deadline, nonce, signature)
@@ -540,10 +611,42 @@ describe('Treasury', () => {
       const signature = await v2.signMessage(ethers.getBytes(hash))
 
       await expect(
-        treasury
-          .connect(user)
-          .whitelistToken(address, deadline, nonce, signature)
+        treasury.connect(user).whitelistToken(address, deadline, nonce, signature)
       ).to.be.revertedWith('Treasury: sender not validator')
+    })
+
+    it('should revert if paused', async () => {
+      let deadline = Math.floor(Date.now() / 1000) + 3600
+      let nonce = await treasury.nonce()
+
+      let hash = await treasury.getPauseHash(deadline, nonce)
+      let signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await treasury.connect(v1).pause(deadline, nonce, signature)
+
+      const address = await token.getAddress()
+
+      deadline = Math.floor(Date.now() / 1000) + 3600
+      nonce = await treasury.nonce()
+
+      hash = await treasury.getWhitelistHash(address, deadline, nonce)
+      signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await expect(
+        treasury.connect(v1).whitelistToken(address, deadline, nonce, signature)
+      ).to.be.revertedWith('Treasury: paused')
+    })
+  })
+
+  describe('getValidators()', () => {
+    it('should return validators correctly', async () => {
+      const validators = await treasury.getValidators()
+
+      expect(validators).to.deep.equal([
+        await v1.getAddress(),
+        await v2.getAddress(),
+        await v3.getAddress(),
+      ])
     })
   })
 })

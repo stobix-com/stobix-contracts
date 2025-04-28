@@ -31,7 +31,7 @@ contract Treasury is ReentrancyGuard, ITreasury {
   // ============================
   // ==== Multi-sig & Storage ===
   // ============================
-
+  bool public paused;
   address[3] public validators;
   mapping(address => bool) public isValidator;
   mapping(address => bool) public isWhitelistedToken;
@@ -40,13 +40,16 @@ contract Treasury is ReentrancyGuard, ITreasury {
   // ========================
   // ======== Actions =======
   // ========================
+  bytes32 public constant PAUSE_ACTION = keccak256('PAUSE');
+  bytes32 public constant UNPAUSE_ACTION = keccak256('UNPAUSE');
   bytes32 public constant WITHDRAW_ACTION = keccak256('WITHDRAW');
   bytes32 public constant WHITELIST_ACTION = keccak256('WHITELIST');
 
   // ========================
   // ======== Events ========
   // ========================
-
+  event Paused(bytes32 hash);
+  event Unpaused(bytes32 hash);
   event Deposit(address indexed token, address indexed from, uint256 amount);
   event Withdrawal(address indexed token, address indexed to, uint256 amount, bytes32 hash);
   event TokenWhitelisted(address indexed token, bytes32 hash);
@@ -72,11 +75,60 @@ contract Treasury is ReentrancyGuard, ITreasury {
   }
 
   /**
+   * @notice Pauses the contract via 2-of-3 multi-sig signatures.
+   * @param deadline Signature expiration.
+   * @param _nonce Expected nonce.
+   * @param signature Signature from second validator.
+   */
+  function pause(
+    uint256 deadline,
+    uint256 _nonce,
+    bytes calldata signature
+  ) external nonReentrant {
+    require(!paused, 'Treasury: already paused');
+    require(block.timestamp <= deadline, 'Treasury: deadline expired');
+    require(_nonce == nonce, 'Treasury: invalid nonce');
+
+    bytes32 hash = getPauseHash(deadline, _nonce);
+    verifyMultiSig(hash, signature);
+    nonce++;
+
+    paused = true;
+
+    emit Paused(hash);
+  }
+
+  /**
+   * @notice Unpauses the contract via 2-of-3 multi-sig signatures.
+   * @param deadline Signature expiration.
+   * @param _nonce Expected nonce.
+   * @param signature Signature from second validator.
+   */
+  function unpause(
+    uint256 deadline,
+    uint256 _nonce,
+    bytes calldata signature
+  ) external nonReentrant {
+    require(paused, 'Treasury: not paused');
+    require(block.timestamp <= deadline, 'Treasury: deadline expired');
+    require(_nonce == nonce, 'Treasury: invalid nonce');
+
+    bytes32 hash = getUnpauseHash(deadline, _nonce);
+    verifyMultiSig(hash, signature);
+    nonce++;
+
+    paused = false;
+
+    emit Unpaused(hash);
+  }
+
+  /**
    * @notice Deposits ERC20 tokens into the treasury.
    * @param token The address of the ERC20 token.
    * @param amount The amount of tokens to deposit.
    */
   function deposit(address token, uint256 amount) external nonReentrant {
+    require(!paused, 'Treasury: paused');
     require(amount > 0, 'Treasury: invalid amount');
     IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
     emit Deposit(token, msg.sender, amount);
@@ -99,6 +151,7 @@ contract Treasury is ReentrancyGuard, ITreasury {
     uint256 _nonce,
     bytes calldata signature
   ) external nonReentrant {
+    require(!paused, 'Treasury: paused');
     require(block.timestamp <= deadline, 'Treasury: deadline expired');
     require(to != address(0), 'Treasury: zero recipient');
     require(amount > 0, 'Treasury: zero amount');
@@ -132,6 +185,7 @@ contract Treasury is ReentrancyGuard, ITreasury {
     uint256 _nonce,
     bytes calldata signature
   ) external nonReentrant {
+    require(!paused, 'Treasury: paused');
     require(block.timestamp <= deadline, 'Treasury: deadline expired');
     require(token != address(0), 'Treasury: zero token');
     require(_nonce == nonce, 'Treasury: invalid nonce');
@@ -171,6 +225,30 @@ contract Treasury is ReentrancyGuard, ITreasury {
   }
 
   /**
+   * @notice Computes the hash of a pause request.
+   */
+  function getPauseHash(
+    uint256 deadline,
+    uint256 _nonce
+  ) public view returns (bytes32) {
+    return keccak256(
+      abi.encode(PAUSE_ACTION, address(this), block.chainid, deadline, _nonce)
+    );
+  }
+
+  /**
+   * @notice Computes the hash of an unpause request.
+   */
+  function getUnpauseHash(
+    uint256 deadline,
+    uint256 _nonce
+  ) public view returns (bytes32) {
+    return keccak256(
+      abi.encode(UNPAUSE_ACTION, address(this), block.chainid, deadline, _nonce)
+    );
+  }
+
+  /**
    * @notice Computes the hash of a whitelist request.
    */
   function getWhitelistHash(
@@ -182,6 +260,13 @@ contract Treasury is ReentrancyGuard, ITreasury {
       keccak256(
         abi.encode(WHITELIST_ACTION, address(this), block.chainid, token, deadline, _nonce)
       );
+  }
+
+  /**
+   * @notice Returns the list of three validators.
+   */
+  function getValidators() external view returns (address[3] memory) {
+    return validators;
   }
 
   /**

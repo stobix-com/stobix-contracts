@@ -11,7 +11,9 @@ coverage.json
 
 # Hardhat-specific
 deployments/
+scripts/
 *.tsbuildinfo
+arguments.js
 
 # IDE/editor
 .vscode/
