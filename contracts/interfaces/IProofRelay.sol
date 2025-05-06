@@ -6,6 +6,7 @@ interface IProofRelay {
   function commitProof(
     bytes32 action,
     bytes32 data,
+    uint256 deadline,
     uint256 nonce,
     bytes calldata signature
   ) external;
@@ -28,6 +29,7 @@ interface IProofRelay {
   function getCommitProofHash(
     bytes32 action,
     bytes32 data,
+    uint256 deadline,
     uint256 nonce
   ) external view returns (bytes32);
 
