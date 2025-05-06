@@ -6,6 +6,7 @@ import { Treasury, MockERC20 } from '../typechain-types'
 describe('Treasury', () => {
   let treasury: Treasury
   let token: MockERC20
+  let token2: MockERC20
   let v1: Signer, v2: Signer, v3: Signer, user: Signer
 
   beforeEach(async () => {
@@ -23,8 +24,10 @@ describe('Treasury', () => {
     await treasury.waitForDeployment()
 
     token = await MockERC20.deploy('Mock', 'MOCK', ethers.parseUnits('1000', 18))
+    token2 = await MockERC20.deploy('Mock2', 'MOCK2', ethers.parseUnits('1000', 18))
 
     await token.waitForDeployment()
+    await token2.waitForDeployment()
   })
 
   describe('receive()', () => {
@@ -169,6 +172,18 @@ describe('Treasury', () => {
   })
 
   describe('deposit()', () => {
+    beforeEach(async () => {
+      const deadline = Math.floor(Date.now() / 1000) + 3600
+      const nonce = await treasury.nonce()
+
+      const hash = await treasury.getWhitelistHash(await token.getAddress(), deadline, nonce)
+      const signature = await v2.signMessage(ethers.getBytes(hash))
+
+      await treasury
+        .connect(v1)
+        .whitelistToken(await token.getAddress(), deadline, nonce, signature)
+    })
+
     it('should deposit tokens', async () => {
       const amount = ethers.parseUnits('10', 18)
       await token.approve(treasury, amount)
@@ -187,6 +202,12 @@ describe('Treasury', () => {
     it('should revert with zero amount', async () => {
       await expect(treasury.deposit(await token.getAddress(), 0)).to.be.revertedWith(
         'Treasury: invalid amount'
+      )
+    })
+
+    it('should revert with not whitelisted token', async () => {
+      await expect(treasury.deposit(await token2.getAddress(), 1)).to.be.revertedWith(
+        'Treasury: token not whitelisted'
       )
     })
 

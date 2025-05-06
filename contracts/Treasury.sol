@@ -130,6 +130,7 @@ contract Treasury is ReentrancyGuard, ITreasury {
   function deposit(address token, uint256 amount) external nonReentrant {
     require(!paused, 'Treasury: paused');
     require(amount > 0, 'Treasury: invalid amount');
+    require(isWhitelistedToken[token], 'Treasury: token not whitelisted');
     IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
     emit Deposit(token, msg.sender, amount);
   }
